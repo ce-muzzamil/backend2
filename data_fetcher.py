@@ -16,8 +16,8 @@ from backend_common.auth import (
     load_user_profile,
     update_user_profile,
     update_user_profile_settings,
+    db,
 )
-from backend_common.auth import db
 from backend_common.background import get_background_tasks
 from dataset_helper import excecute_dataset_plan
 from backend_common.stripe_backend.customers import fetch_customer
@@ -667,8 +667,6 @@ async def fetch_dataset(req: ReqFetchDataset):
     # the name of the dataset will be the action + cct_layer name
     # make_ggl_layer_filename
     if req.action == "full data":
-        # if the user already has this dataset on his profile don't charge him
-
         estimated_cost, _ = await calculate_cost(req)
         estimated_cost = int(round(estimated_cost[1], 2) * 100)
         user_data = await load_user_profile(req.user_id)
@@ -689,6 +687,12 @@ async def fetch_dataset(req: ReqFetchDataset):
             if not customer:
                 raise HTTPException(status_code=404, detail="Customer not found")
             
+            if customer['balance'] < estimated_cost:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Insufficient balance in wallet"
+                )
+
             # Deduct funds from the customer's balance in Stripe
             # Note: For deductions, we pass a negative amount
             stripe.Customer.create_balance_transaction(
